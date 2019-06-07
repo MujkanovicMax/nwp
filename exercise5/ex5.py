@@ -88,17 +88,18 @@ vo_en[:,-1] = 0
 vorFT = np.fft.fft2(vo_en)
 #vor   = np.fft.ifft2(inv_v)
 
-kx = np.zeros(vo_en.shape[0])
-ky = np.zeros(vo_en.shape[1]) 
 
 kx = np.fft.fftfreq(vo_en.shape[0],dx/(2*np.pi))
-ky = np.fft.fftfreq(vo_en.shape[1],dx/(2*np.pi))
+ky = np.fft.fftfreq(vo_en.shape[1],dy/(2*np.pi))
+ 
 
 M = np.add.outer(kx**2,ky**2)
+M[0,0] = 1
 
 psiFT = -1/M * vorFT
 
 psi = np.fft.ifft2(psiFT)
+psi = np.absolute(psi)
 
 u_comp = -ddy(psi,dy)
 v_comp = ddx(psi,dx)
