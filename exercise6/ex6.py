@@ -10,8 +10,7 @@ from scipy import stats
 
 
 def leap_lag(values,mu,mu_D,t,dt,plot=False,dx=None,dy=None):
-    if plot:
-        
+            
     fts= np.zeros(values.shape)
     dvalues = fts*1
     
@@ -63,7 +62,23 @@ def ddy(values,dx):
     
     return dvalues
 
+def double_ddx(values,dx):
+    dvalues = np.zeros(values.shape)
+    dvalues[0,:]      = values[-1,:]-2*values[0,:]+values[1,:] 
+    dvalues[1:-1,:]   = values[0:-2,:]-2*values[1:-1,:] + values[2:,:]
+    dvalues[-1,:]     = values[-2,:] -2*values[-1,:] + values[0,:]
+    
+    dvalues = dvalues / dx / dx
+    
+    return dvalues
 
+def double_ddy(values,dy):
+    dvalues = np.zeros(values.shape)
+    dvalues[:,0]      = (-values[:,0]+values[:,1])/dy/dy 
+    dvalues[:,1:-1]   = (values[:,0:-2] -2*values[:,1:-1] + values[:,2:])/(dy*dy)
+    dvalues[:,-1]     = (-values[:,-2] + values[:,-1])/dy/dy
+    
+    return dvalues
 def inversion(vo,u,dx,dy):
 
     vo_en = np.hstack((np.fliplr(vo[:,1:-1])*(-1),vo))
@@ -88,7 +103,44 @@ def inversion(vo,u,dx,dy):
 
 
     psi = psi[:,vo[:,1:-1].shape[1]:]-np.nanmean(u)*dy*np.arange(0,vo.shape[1])
+    
     return psi
+
+
+
+def mkfc(values,f,u,v,D,dx,dy):
+
+    fts = values + dt * (- u * ddx(values,dx) - v * ddy(values,dy) - v * ddy(f,dy))
+    psi=inversion(fts,u,dx,dy)
+    u = -ddy(psi,dy)
+    v = ddx(psi,dx)
+
+    for j,time in enumerate(np.arange(0,t,dt)):
+            dvalues = values + 2*dt * (- u * ddx(fts,dx) - v * ddy(fts,dy) - v * ddy(f,dy) + D * (double_ddx(values,dx) + double_ddy(values,dy)))
+            #print(- u * ddx(fts,dx) - v * ddy(fts,dy) - v * ddy(f,dy) )#+ D * (ddx(ddx(values,dx),dx) + ddy(ddy(values,dy),dy)))
+            values= fts*1
+            fts=dvalues*1
+            
+            psi=inversion(dvalues,u,dx,dy)
+
+            
+            u = -ddy(psi,dy)
+            v = ddx(psi,dx)
+            #print(vo_fc)
+            
+            
+            #map3 = Basemap(projection='cyl',llcrnrlat=0,urcrnrlat=90,\
+            #llcrnrlon=-180,urcrnrlon=180,resolution='c')
+            #map3.drawmapboundary(color='k', linewidth=1.0, fill_color=None)
+            #map3.drawcoastlines(linewidth=1.0, linestyle='solid', color='k')
+            #map3.contourf(coord[0],coord[1],dvalues.transpose(),np.arange(-4e-4,4.0001e-4,1e-6))
+    
+            #plt.tight_layout()
+                
+            #plt.savefig("vo_fc_"+str(time)+"_min.png")
+           
+    return dvalues
+
 
 #Read reanalysis data
 filename='../exercise4/eraint_2019020100.nc'
@@ -143,15 +195,44 @@ mu=u*dt/dx
 
 D = 4*100000#/np.cos(np.pi/4)/6374000/2/np.pi*360/np.cos(np.pi/4)/6374000/2/np.pi*360
 mu_D=dt/dx/dx * D
+omega=2*np.pi/24./3600
 
+f = 2*omega*np.sin(lats)
+f = np.outer(np.ones(lons.shape),f)
+
+
+map3 = Basemap(projection='cyl',llcrnrlat=0,urcrnrlat=90,llcrnrlon=-180,urcrnrlon=180,resolution='c')
+map3.drawmapboundary(color='k', linewidth=1.0, fill_color=None)
+map3.drawcoastlines(linewidth=1.0, linestyle='solid', color='k')
+map3.contourf(coord[0],coord[1],vo.transpose(),np.arange(-4e-4,4.0001e-4,1e-6))
+
+plt.tight_layout()
+    
+plt.savefig("votest1.png")
+plt.close('all')
 
 psi=inversion(vo,u,dx,dy)
 
 
-psi_fc = leap_lag(psi,mu,mu_D,t,dt,plot=True,dx=dx,dy=dy)
+u = -ddy(psi,dy)
+v = ddx(psi,dx)
+vo=ddx(v,dx)-ddy(u,dy)
 
-u_fc = -ddy(psi_fc,dy)
-v_fc = ddx(psi_fc,dx)
+map3 = Basemap(projection='cyl',llcrnrlat=0,urcrnrlat=90,llcrnrlon=-180,urcrnrlon=180,resolution='c')
+map3.drawmapboundary(color='k', linewidth=1.0, fill_color=None)
+map3.drawcoastlines(linewidth=1.0, linestyle='solid', color='k')
+map3.contourf(coord[0],coord[1],vo.transpose(),np.arange(-4e-4,4.0001e-4,1e-6))
+
+plt.tight_layout()
+    
+plt.savefig("votest2.png")
+plt.close('all')
+
+#psi_fc = leap_lag(psi,mu,mu_D,t,dt,plot=True,dx=dx,dy=dy)
+vo_fc = mkfc(vo,f,u,v,D,dx,dy)
+
+#u_fc = -ddy(psi_fc,dy)
+#v_fc = ddx(psi_fc,dx)
 
 
 
@@ -180,18 +261,26 @@ v_fc = ddx(psi_fc,dx)
     
 #plt.savefig("u_an.png")
 
-
-
-
-map3 = Basemap(projection='cyl',llcrnrlat=0,urcrnrlat=90,\
-            llcrnrlon=-180,urcrnrlon=180,resolution='c')
+map3 = Basemap(projection='cyl',llcrnrlat=0,urcrnrlat=90,llcrnrlon=-180,urcrnrlon=180,resolution='c')
 map3.drawmapboundary(color='k', linewidth=1.0, fill_color=None)
 map3.drawcoastlines(linewidth=1.0, linestyle='solid', color='k')
-map3.contourf(coord[0],coord[1],u_fc.transpose(),np.arange(-100,100,0.2))
-    
+map3.contourf(coord[0],coord[1],vo_fc.transpose())#,np.arange(-4e-7,4.0001e-4,1e-6))
+
 plt.tight_layout()
     
-plt.savefig("u_fc.png")
+plt.savefig("vo_fc_"+str(time)+"_min.png")
+plt.close('all')
+
+
+#map3 = Basemap(projection='cyl',llcrnrlat=0,urcrnrlat=90,\
+            #llcrnrlon=-180,urcrnrlon=180,resolution='c')
+#map3.drawmapboundary(color='k', linewidth=1.0, fill_color=None)
+#map3.drawcoastlines(linewidth=1.0, linestyle='solid', color='k')
+#map3.contourf(coord[0],coord[1],u_fc.transpose(),np.arange(-100,100,0.2))
+    
+#plt.tight_layout()
+    
+#plt.savefig("u_fc.png")
 
 #map2 = Basemap(projection='cyl',llcrnrlat=0,urcrnrlat=90,\
             #llcrnrlon=-180,urcrnrlon=180,resolution='c')
