@@ -74,12 +74,12 @@ def double_ddx(values,dx):
 
 def double_ddy(values,dy):
     dvalues = np.zeros(values.shape)
-    dvalues[:,0]      = (-values[:,0]+values[:,1])/dy/dy 
+    dvalues[:,0]      = 0*(-values[:,0]+values[:,1])/dy/dy 
     dvalues[:,1:-1]   = (values[:,0:-2] -2*values[:,1:-1] + values[:,2:])/(dy*dy)
-    dvalues[:,-1]     = (-values[:,-2] + values[:,-1])/dy/dy
+    dvalues[:,-1]     = 0*(-values[:,-2] + values[:,-1])/dy/dy
     
     return dvalues
-def inversion(vo,u,dx,dy):
+def inversion(vo,umean,dx,dy):
 
     vo_en = np.hstack((np.fliplr(vo[:,1:-1])*(-1),vo))
     vo_en[:,vo[:,1:-1].shape[1]] = 0
@@ -102,42 +102,66 @@ def inversion(vo,u,dx,dy):
     psi = np.real(psi)
 
 
-    psi = psi[:,vo[:,1:-1].shape[1]:]-np.nanmean(u)*dy*np.arange(0,vo.shape[1])
+    psi = psi[:,vo[:,1:-1].shape[1]:]-umean*dy*np.arange(0,vo.shape[1])
     
     return psi
 
 
 
 def mkfc(values,f,u,v,D,dx,dy):
-
+    
+    
+    #a=u[:,30:61]
+    #c=v[:,30:61]
+    
+    umean = np.nanmean(u)
+    
     fts = values + dt * (- u * ddx(values,dx) - v * ddy(values,dy) - v * ddy(f,dy))
-    psi=inversion(fts,u,dx,dy)
+    psi=inversion(fts,umean,dx,dy)
     u = -ddy(psi,dy)
     v = ddx(psi,dx)
+    #print(v[:,0],v[:,-1])
+    
+        
+    #b = u[:,30:61]
+    #d = v[:,30:61]
 
+    #fc_corr,p = stats.pearsonr(np.reshape(a,(a.shape[0]*a.shape[1],)),np.reshape(b,(b.shape[0]*b.shape[1],)))
+    #print("u_corr=" + str(fc_corr))
+
+    #pers_corr, pp = stats.pearsonr(np.reshape(c,(c.shape[0]*c.shape[1],)),np.reshape(d,(d.shape[0]*d.shape[1],)))
+    #print("v_corr=" + str(pers_corr))
+    
+    print(np.mean(u),np.mean(v), np.mean(fts), np.mean(fts**2))
+    
     for j,time in enumerate(np.arange(0,t,dt)):
-            dvalues = values + 2*dt * (- u * ddx(fts,dx) - v * ddy(fts,dy) - v * ddy(f,dy) + D * (double_ddx(values,dx) + double_ddy(values,dy)))
+            
+            beta = ddy(f,dy)
+            
+            
+            dvalues = values + 2*dt * (- u * ddx(fts,dx) - v * ddy(fts,dy) - v * beta + D * (double_ddx(values,dx) + double_ddy(values,dy)))
             #print(- u * ddx(fts,dx) - v * ddy(fts,dy) - v * ddy(f,dy) )#+ D * (ddx(ddx(values,dx),dx) + ddy(ddy(values,dy),dy)))
             values= fts*1
             fts=dvalues*1
             
-            psi=inversion(dvalues,u,dx,dy)
+            psi=inversion(dvalues,umean,dx,dy)
 
-            
+            #print(np.nanmean(u))
             u = -ddy(psi,dy)
             v = ddx(psi,dx)
             #print(vo_fc)
             
-            
+            print(np.mean(u),np.mean(v), np.mean(fts), np.mean(fts**2))
+
             #map3 = Basemap(projection='cyl',llcrnrlat=0,urcrnrlat=90,\
             #llcrnrlon=-180,urcrnrlon=180,resolution='c')
             #map3.drawmapboundary(color='k', linewidth=1.0, fill_color=None)
             #map3.drawcoastlines(linewidth=1.0, linestyle='solid', color='k')
-            #map3.contourf(coord[0],coord[1],dvalues.transpose(),np.arange(-4e-4,4.0001e-4,1e-6))
+            #map3.contourf(coord[0],coord[1],v.transpose(),100)
     
             #plt.tight_layout()
                 
-            #plt.savefig("vo_fc_"+str(time)+"_min.png")
+            #plt.savefig("v_"+str(time)+"_min.png")
            
     return dvalues
 
@@ -145,7 +169,7 @@ def mkfc(values,f,u,v,D,dx,dy):
 #Read reanalysis data
 filename='../exercise4/eraint_2019020100.nc'
 ncf = netCDF4.Dataset(filename, 'r')
-filename='../exercise4/eraint_2019020106.nc'
+filename='../exercise4/eraint_2019020200.nc'
 ncf2 = netCDF4.Dataset(filename, 'r')
 u_an=ncf2.variables['u'][0,:]
 v_an=ncf2.variables["v"][0,:]
@@ -183,50 +207,44 @@ u_an = u_an[::-1,:].transpose()
 v_an = v_an[::-1,:].transpose()
 vo = vo[::-1,:].transpose()
 vo_an = vo_an[::-1,:].transpose()
+vo_error =  0.1*vo_an
+u_error = u*0.1
+
+#vo += vo_error
+#u  += u_error
+
 
 coord = np.meshgrid(lons-180.,lats)
 radius_e = 6371000
 dx = radius_e*np.pi/180.* np.cos(45/180.*np.pi)
 dy = radius_e*np.pi/180.
 dt = 0.1*3600.
-t= 6*3600.
+t= 8*7*6*5*4*3*2*1*15#~7tage
 
 mu=u*dt/dx
 
-D = 4*100000#/np.cos(np.pi/4)/6374000/2/np.pi*360/np.cos(np.pi/4)/6374000/2/np.pi*360
+D = 5*10000#/np.cos(np.pi/4)/6374000/2/np.pi*360/np.cos(np.pi/4)/6374000/2/np.pi*360
 mu_D=dt/dx/dx * D
 omega=2*np.pi/24./3600
 
-f = 2*omega*np.sin(lats)
+f = 2*omega*np.sin(lats[ind_x]/180.*np.pi)
 f = np.outer(np.ones(lons.shape),f)
 
+vo = ddx(v,dx) - ddy(u,dy)
 
 map3 = Basemap(projection='cyl',llcrnrlat=0,urcrnrlat=90,llcrnrlon=-180,urcrnrlon=180,resolution='c')
 map3.drawmapboundary(color='k', linewidth=1.0, fill_color=None)
 map3.drawcoastlines(linewidth=1.0, linestyle='solid', color='k')
-map3.contourf(coord[0],coord[1],vo.transpose(),np.arange(-4e-4,4.0001e-4,1e-6))
+map3.contourf(coord[0],coord[1],vo.transpose(),np.linspace(-4e-4,4e-4,1000))
 
 plt.tight_layout()
     
 plt.savefig("votest1.png")
 plt.close('all')
 
-psi=inversion(vo,u,dx,dy)
 
 
-u = -ddy(psi,dy)
-v = ddx(psi,dx)
-vo=ddx(v,dx)-ddy(u,dy)
 
-map3 = Basemap(projection='cyl',llcrnrlat=0,urcrnrlat=90,llcrnrlon=-180,urcrnrlon=180,resolution='c')
-map3.drawmapboundary(color='k', linewidth=1.0, fill_color=None)
-map3.drawcoastlines(linewidth=1.0, linestyle='solid', color='k')
-map3.contourf(coord[0],coord[1],vo.transpose(),np.arange(-4e-4,4.0001e-4,1e-6))
-
-plt.tight_layout()
-    
-plt.savefig("votest2.png")
-plt.close('all')
 
 #psi_fc = leap_lag(psi,mu,mu_D,t,dt,plot=True,dx=dx,dy=dy)
 vo_fc = mkfc(vo,f,u,v,D,dx,dy)
@@ -234,6 +252,15 @@ vo_fc = mkfc(vo,f,u,v,D,dx,dy)
 #u_fc = -ddy(psi_fc,dy)
 #v_fc = ddx(psi_fc,dx)
 
+map3 = Basemap(projection='cyl',llcrnrlat=0,urcrnrlat=90,llcrnrlon=-180,urcrnrlon=180,resolution='c')
+map3.drawmapboundary(color='k', linewidth=1.0, fill_color=None)
+map3.drawcoastlines(linewidth=1.0, linestyle='solid', color='k')
+map3.contourf(coord[0],coord[1],vo_fc.transpose(),np.linspace(-4e-4,4e-4,1000))
+
+plt.tight_layout()
+    
+plt.savefig("vofc.png")
+plt.close('all')
 
 
 ### correlation ####
@@ -264,13 +291,22 @@ vo_fc = mkfc(vo,f,u,v,D,dx,dy)
 map3 = Basemap(projection='cyl',llcrnrlat=0,urcrnrlat=90,llcrnrlon=-180,urcrnrlon=180,resolution='c')
 map3.drawmapboundary(color='k', linewidth=1.0, fill_color=None)
 map3.drawcoastlines(linewidth=1.0, linestyle='solid', color='k')
-map3.contourf(coord[0],coord[1],vo_fc.transpose())#,np.arange(-4e-7,4.0001e-4,1e-6))
+map3.contourf(coord[0],coord[1],vo_fc.transpose(),np.linspace(-4e-4,4e-4,1000))#,np.arange(-4e-6,4.0001e-4,1e-6))
 
 plt.tight_layout()
     
 plt.savefig("vo_fc_"+str(time)+"_min.png")
 plt.close('all')
 
+map3 = Basemap(projection='cyl',llcrnrlat=0,urcrnrlat=90,llcrnrlon=-180,urcrnrlon=180,resolution='c')
+map3.drawmapboundary(color='k', linewidth=1.0, fill_color=None)
+map3.drawcoastlines(linewidth=1.0, linestyle='solid', color='k')
+map3.contourf(coord[0],coord[1],vo_an.transpose(),np.linspace(-4e-4,4e-4,1000))#,np.arange(-4e-6,4.0001e-4,1e-6))
+
+plt.tight_layout()
+    
+plt.savefig("vo_an"+".png")
+plt.close('all')
 
 #map3 = Basemap(projection='cyl',llcrnrlat=0,urcrnrlat=90,\
             #llcrnrlon=-180,urcrnrlon=180,resolution='c')
@@ -302,13 +338,16 @@ plt.close('all')
     
 #plt.savefig("v_fc.png")
 
+a=vo_fc[:,30:61]
+b=vo_an[:,30:61]
 
+fc_corr,p = stats.pearsonr(np.reshape(a,(a.shape[0]*a.shape[1],)),np.reshape(b,(b.shape[0]*b.shape[1],)))
+print("u_corr=" + str(fc_corr))
 
+#pers_corr, pp = stats.pearsonr(np.reshape(c,(c.shape[0]*c.shape[1],)),np.reshape(d,(d.shape[0]*d.shape[1],)))
+#print("v_corr=" + str(pers_corr))
 
-
-
-
-
+#print(np.mean(u),np.mean(v), np.mean(fts), np.mean(fts**2))
 
 
 
